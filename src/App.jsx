@@ -253,7 +253,8 @@ const App = () => {
       setSelectedFranchise(res.data.franchises[0]);
       setSelectedMonth(res.data.months[0]);
     } catch (err) {
-      alert("파일 준비 중 오류가 발생했습니다.");
+      const errorMsg = err.response?.data?.detail || err.message;
+      alert(`파일 준비 중 오류가 발생했습니다: ${errorMsg}`);
     }
   };
 

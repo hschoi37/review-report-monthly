@@ -216,24 +216,44 @@ JSON만 출력하세요.
 
 @app.post("/api/prepare")
 async def prepare_analysis(file: UploadFile = File(...)):
-    contents = await file.read()
-    df = pd.read_excel(io.BytesIO(contents))
-    
-    analyzer = CommentAnalyzer("") # API 키 불필요 (메타데이터용)
-    mapping = analyzer.identify_columns(df)
-    
-    # 가맹점 및 월 목록
-    df[mapping['date']] = pd.to_datetime(df[mapping['date']], errors='coerce')
-    df = df.dropna(subset=[mapping['date']])
-    
-    franchises = sorted(df[mapping['franchise']].unique().tolist())
-    months = sorted(df[mapping['date']].dt.strftime('%Y-%m').unique().tolist(), reverse=True)
-    
-    return {
-        "franchises": franchises,
-        "months": months,
-        "mapping": mapping
-    }
+    try:
+        contents = await file.read()
+        df = pd.read_excel(io.BytesIO(contents))
+        
+        analyzer = CommentAnalyzer("") # API 키 불필요 (메타데이터용)
+        mapping = analyzer.identify_columns(df)
+        
+        # 가맹점 및 월 목록
+        # 날짜 컬럼 정규화
+        date_col = mapping.get('date')
+        if not date_col or date_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"날짜 컬럼을 찾을 수 없습니다. (발견된 컬럼: {df.columns.tolist()})")
+            
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        df = df.dropna(subset=[date_col])
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="유효한 날짜 데이터가 없습니다.")
+            
+        franchise_col = mapping.get('franchise')
+        if not franchise_col or franchise_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"가맹점 컬럼을 찾을 수 없습니다. (발견된 컬럼: {df.columns.tolist()})")
+
+        franchises = sorted(df[franchise_col].unique().astype(str).tolist())
+        months = sorted(df[date_col].dt.strftime('%Y-%m').unique().tolist(), reverse=True)
+        
+        return {
+            "franchises": franchises,
+            "months": months,
+            "mapping": mapping
+        }
+    except Exception as e:
+        print(f"Error in /api/prepare: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"서버 내부 오류: {str(e)}")
 
 @app.post("/api/analyze")
 async def analyze_data(
