@@ -318,15 +318,22 @@ async def analyze_data(
     }
 
 # --- 프론트엔드 서빙 설정 (배포용) ---
-# dist 폴더가 존재할 경우 (빌드된 상태) 정적 파일 서빙
 if os.path.exists("dist"):
+    # assets 폴더는 직접 마운트
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+    
+    # 그 외 모든 경로는 index.html 반환 (API 경로 제외)
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # API 요청은 제외하고 index.html 반환
+        # /api로 시작하는 요청이 여기까지 왔다면 실제 API가 없는 것이므로 404
         if full_path.startswith("api"):
-            raise HTTPException(status_code=404)
+            return {"detail": "API endpoint not found"}, 404
         return FileResponse("dist/index.html")
+else:
+    # 로컬 개발 환경 등을 위한 기본 루트
+    @app.get("/")
+    async def root():
+        return {"message": "API is running. Frontend build not found."}
 
 if __name__ == "__main__":
     import uvicorn
