@@ -14,10 +14,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# redirect_slashes=False 설정을 통해 405 에러 방지
+# redirect_slashes=False로 설정하여 405 에러 원천 차단
 app = FastAPI(title="가맹점 댓글 분석 API", redirect_slashes=False)
 
-# CORS 설정
+# CORS 설정 (배포 환경 필수)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -79,9 +79,9 @@ class CommentAnalyzer:
 
     def analyze_comments(self, comments: List[str], franchise: str, month: str, stats: Dict, model: str) -> Dict:
         prompt = f"""당신은 전문 데이터 분석가입니다. 다음 리뷰 데이터를 분석하여 JSON으로 응답하세요.
-        리포트 내용(요약, 인사이트, 상세 설명 등)은 반드시 한글로 작성하세요.
+        모든 텍스트는 반드시 한글로 작성하세요.
         중요: 키워드 설명(desc)은 한글 15~25자 내외로 작성하세요.
-        데이터: {chr(10).join([f"- {c}" for c in comments[:150]])}
+        분석할 데이터: {chr(10).join([f"- {c}" for c in comments[:150]])}
         형식: {{ "summary": "...", "insight": "...", "sentiment": {{ "positive": 0, "neutral": 0, "negative": 0 }}, "pros": [ {{ "title": "...", "content": "..." }} ], "cons": [ {{ "title": "...", "content": "..." }} ], "keywords": [ {{ "tag": "키워드", "is_positive": true, "desc": "15-25자 설명" }} ], "action_plan": ["..."] }}
         """
         try:
@@ -95,7 +95,7 @@ class CommentAnalyzer:
         except Exception as e:
             raise Exception(f"AI 분석 실패: {str(e)}")
 
-# --- API 엔드포인트 (반드시 상단 배치) ---
+# --- [중요] API 엔드포인트: 정적 파일 서빙보다 무조건 위에 있어야 함 ---
 
 @app.post("/api/prepare")
 async def prepare_analysis(file: UploadFile = File(...)):
@@ -146,18 +146,27 @@ async def analyze_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- 프론트엔드 서빙 (최하단 배치) ---
+# --- 프론트엔드 정적 파일 서빙: 코드 최하단 배치 ---
 
 if os.path.exists("dist"):
+    # /assets 경로는 StaticFiles가 직접 관리
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+    
+    # 루트 경로 요청
+    @app.get("/")
+    async def serve_index():
+        return FileResponse("dist/index.html")
+        
+    # 그 외 모든 GET 요청은 index.html로 (SPA 라우팅 대응)
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        if full_path.startswith("api"): raise HTTPException(status_code=404)
-        return FileResponse("dist/index.html")
-    @app.get("/")
-    async def index():
+        # API 요청이 GET으로 들어온 경우 404 처리
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="API endpoint not found for GET")
         return FileResponse("dist/index.html")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    # Railway의 PORT 환경변수 사용
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
