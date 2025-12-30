@@ -27,31 +27,6 @@ app.add_middleware(
 # API 전용 라우터 생성
 api_router = APIRouter(prefix="/api", tags=["api"])
 
-# ASGI 미들웨어: API와 정적 파일 서빙 완전 분리
-class StaticFilesMiddleware:
-    """
-    API 요청과 정적 파일 요청을 ASGI 레벨에서 분리하여
-    FastAPI 라우팅 충돌을 근본적으로 해결하는 미들웨어
-    """
-    def __init__(self, app, static_dir="dist"):
-        self.app = app
-        self.static_dir = static_dir
-        self.static_files = StaticFiles(directory=static_dir, html=True)
-    
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            path = scope["path"]
-            # /api로 시작하는 모든 요청은 FastAPI로 전달 (POST, GET 등 모든 메서드)
-            if path.startswith("/api"):
-                await self.app(scope, receive, send)
-                return
-            # 정적 파일이 존재하면 정적 파일 서빙
-            if os.path.exists(self.static_dir):
-                await self.static_files(scope, receive, send)
-                return
-        # 기타 요청은 FastAPI로 전달
-        await self.app(scope, receive, send)
-
 class CommentAnalyzer:
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -199,13 +174,14 @@ async def analyze_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"분석 오류: {str(e)}")
 
-# API 라우터 등록
+# --- Railway 환경 최적화: FastAPI 공식 권장 방식 ---
+# 1. API Router를 먼저 등록 (최우선 순위)
 app.include_router(api_router)
 
-# --- ASGI 미들웨어 적용 (정적 파일 서빙) ---
-# 기존의 @app.get() 라우트 방식 대신 미들웨어를 사용하여 라우팅 충돌 완전 제거
+# 2. 정적 파일은 가장 마지막에 mount
+# FastAPI는 라우트를 등록 순서대로 매칭하므로 API가 먼저 처리됨
 if os.path.exists("dist"):
-    app = StaticFilesMiddleware(app)
+    app.mount("/", StaticFiles(directory="dist", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
