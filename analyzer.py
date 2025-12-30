@@ -14,14 +14,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="가맹점 댓글 분석 API")
+app = FastAPI(title="가맹점 댓글 분석 API", redirect_slashes=False)
 
-# CORS 설정
+# CORS 설정 보강
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -319,18 +319,28 @@ async def analyze_data(
 
 # --- 프론트엔드 서빙 설정 (배포용) ---
 if os.path.exists("dist"):
-    # assets 폴더는 직접 마운트
+    # assets 폴더 마운트 (가장 먼저)
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
     
-    # 그 외 모든 경로는 index.html 반환 (API 경로 제외)
+    # 루트(/) 요청 시 index.html 반환
+    @app.get("/")
+    async def serve_index():
+        return FileResponse("dist/index.html")
+        
+    # 그 외 모든 GET 요청은 index.html로 (SPA 라우팅용)
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # /api로 시작하는 요청이 여기까지 왔다면 실제 API가 없는 것이므로 404
+        # API 경로로 들어온 GET 요청이 여기까지 왔다면 실제 API가 없는 것
         if full_path.startswith("api"):
-            return {"detail": "API endpoint not found"}, 404
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        
+        # 실제 파일이 존재하는지 확인 (예: vite.svg 등)
+        file_path = os.path.join("dist", full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
         return FileResponse("dist/index.html")
 else:
-    # 로컬 개발 환경 등을 위한 기본 루트
     @app.get("/")
     async def root():
         return {"message": "API is running. Frontend build not found."}
