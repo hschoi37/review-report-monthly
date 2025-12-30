@@ -16,8 +16,10 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 
-// 배포 환경에서는 브라우저의 현재 Origin을 명시적으로 사용하고, 로컬 개발 시에만 localhost 사용
-const API_BASE = import.meta.env.PROD ? window.location.origin : "http://localhost:8000";
+// API 백엔드 (Railway) URL - 프론트엔드(Vercel)와 백엔드(Railway) 완전 분리
+const API_BASE = import.meta.env.PROD 
+  ? "https://review-report-monthly-production.up.railway.app" 
+  : "http://localhost:8000";
 
 // 환경 변수 또는 로컬 스토리지에서 키를 가져오도록 변경 (보안 강화)
 const DEFAULT_ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY || '';

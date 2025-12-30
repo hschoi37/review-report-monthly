@@ -1,7 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from starlette.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 import pandas as pd
 import io
 import os
@@ -174,14 +173,19 @@ async def analyze_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"분석 오류: {str(e)}")
 
-# --- Railway 환경 최적화: FastAPI 공식 권장 방식 ---
-# 1. API Router를 먼저 등록 (최우선 순위)
+# --- API 전용 백엔드 (프론트엔드는 Vercel에서 별도 배포) ---
+# API Router 등록
 app.include_router(api_router)
 
-# 2. 정적 파일은 가장 마지막에 mount
-# FastAPI는 라우트를 등록 순서대로 매칭하므로 API가 먼저 처리됨
-if os.path.exists("dist"):
-    app.mount("/", StaticFiles(directory="dist", html=True), name="static")
+# 루트 경로 (헬스체크용)
+@app.get("/")
+async def root():
+    """API 서버 헬스체크"""
+    return {
+        "service": "Review Report API",
+        "status": "healthy",
+        "endpoints": ["/api/prepare", "/api/analyze"]
+    }
 
 if __name__ == "__main__":
     import uvicorn
