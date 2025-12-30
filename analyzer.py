@@ -1,12 +1,10 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 import pandas as pd
 import io
 import os
 import json
-import anthropic
 import openai
 from typing import Dict, List, Any
 from dotenv import load_dotenv
@@ -25,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API 전용 라우터 생성 (완전 독립)
+# API 전용 라우터 생성
 api_router = APIRouter(prefix="/api", tags=["api"])
 
 class CommentAnalyzer:
@@ -105,7 +103,7 @@ class CommentAnalyzer:
         except Exception as e:
             raise Exception(f"AI 분석 실패: {str(e)}")
 
-# --- API 라우터에 엔드포인트 등록 ---
+# --- API 엔드포인트 ---
 
 @api_router.post("/prepare")
 async def prepare_analysis(file: UploadFile = File(...)):
@@ -175,23 +173,39 @@ async def analyze_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"분석 오류: {str(e)}")
 
-# API 라우터를 앱에 등록 (정적 파일보다 먼저!)
+# API 라우터 등록 (반드시 정적 파일보다 먼저!)
 app.include_router(api_router)
 
-# --- 정적 파일 서빙 (가장 마지막에 등록) ---
+# --- 정적 파일 서빙 (수동 방식) ---
 
 if os.path.exists("dist"):
-    # assets 폴더 마운트
-    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+    # assets 폴더의 파일들을 개별적으로 서빙
+    @app.get("/assets/{file_path:path}")
+    async def serve_assets(file_path: str):
+        """정적 파일 (CSS, JS 등) 서빙"""
+        full_path = os.path.join("dist/assets", file_path)
+        if os.path.isfile(full_path):
+            return FileResponse(full_path)
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # 기타 정적 파일 (vite.svg 등)
+    @app.get("/{file_name}")
+    async def serve_static_file(file_name: str):
+        """루트 레벨 정적 파일 서빙"""
+        if file_name.startswith("api"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        
+        full_path = os.path.join("dist", file_name)
+        if os.path.isfile(full_path):
+            return FileResponse(full_path)
+        
+        # 파일이 없으면 index.html 반환 (SPA 라우팅)
+        return FileResponse("dist/index.html")
     
     # 루트 경로
     @app.get("/")
     async def serve_root():
-        return FileResponse("dist/index.html")
-    
-    # 나머지 모든 경로는 index.html로 (SPA 라우팅)
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
+        """루트 경로 - index.html 반환"""
         return FileResponse("dist/index.html")
 
 if __name__ == "__main__":
@@ -201,6 +215,6 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=port,
-        forwarded_allow_ips="*",  # 프록시 헤더 허용
-        proxy_headers=True  # X-Forwarded-* 헤더 처리
+        forwarded_allow_ips="*",
+        proxy_headers=True
     )
