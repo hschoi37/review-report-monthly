@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+__pycache__/
+*.pyc
+.vercel/
+.vite/
+*.xlsx
+*.pdf
+*.png
+sample*
+11월*
+
