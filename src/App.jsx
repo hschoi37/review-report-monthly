@@ -16,8 +16,8 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 
-// 배포 환경에서는 상대 경로를 사용하고, 로컬 개발 시에만 localhost 사용
-const API_BASE = import.meta.env.PROD ? "" : "http://localhost:8000";
+// 배포 환경에서는 브라우저의 현재 Origin을 명시적으로 사용하고, 로컬 개발 시에만 localhost 사용
+const API_BASE = import.meta.env.PROD ? window.location.origin : "http://localhost:8000";
 
 // 환경 변수 또는 로컬 스토리지에서 키를 가져오도록 변경 (보안 강화)
 const DEFAULT_ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY || '';
@@ -248,7 +248,7 @@ const App = () => {
     formData.append('file', uploadedFile);
 
     try {
-      const res = await axios.post(`${API_BASE}/api/prepare/`, formData);
+      const res = await axios.post(`${API_BASE}/api/prepare`, formData);
       setPrepData(res.data);
       setSelectedFranchise(res.data.franchises[0]);
       setSelectedMonth(res.data.months[0]);
@@ -270,7 +270,7 @@ const App = () => {
     formData.append('model', selectedModel);
 
     try {
-      const res = await axios.post(`${API_BASE}/api/analyze/`, formData);
+      const res = await axios.post(`${API_BASE}/api/analyze`, formData);
       setResult(res.data);
       setEditableResult(JSON.parse(JSON.stringify(res.data)));
     } catch (err) {

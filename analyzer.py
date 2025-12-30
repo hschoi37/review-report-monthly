@@ -1,7 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import pandas as pd
 import io
 import os
@@ -14,15 +14,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# redirect_slashes=False로 설정하여 405 에러 원천 차단
-app = FastAPI(title="가맹점 댓글 분석 API", redirect_slashes=False)
+# 표준 FastAPI 설정
+app = FastAPI(title="가맹점 댓글 분석 API")
 
-# CORS 설정 (배포 환경 필수)
+# CORS 설정 (모든 도메인 허용)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -81,7 +81,7 @@ class CommentAnalyzer:
         prompt = f"""당신은 전문 데이터 분석가입니다. 다음 리뷰 데이터를 분석하여 JSON으로 응답하세요.
         모든 텍스트는 반드시 한글로 작성하세요.
         중요: 키워드 설명(desc)은 한글 15~25자 내외로 작성하세요.
-        분석할 데이터: {chr(10).join([f"- {c}" for c in comments[:150]])}
+        데이터: {chr(10).join([f"- {c}" for c in comments[:150]])}
         형식: {{ "summary": "...", "insight": "...", "sentiment": {{ "positive": 0, "neutral": 0, "negative": 0 }}, "pros": [ {{ "title": "...", "content": "..." }} ], "cons": [ {{ "title": "...", "content": "..." }} ], "keywords": [ {{ "tag": "키워드", "is_positive": true, "desc": "15-25자 설명" }} ], "action_plan": ["..."] }}
         """
         try:
@@ -95,10 +95,9 @@ class CommentAnalyzer:
         except Exception as e:
             raise Exception(f"AI 분석 실패: {str(e)}")
 
-# --- [중요] API 엔드포인트: 슬래시 유무에 상관없이 POST 허용 ---
+# --- API 서버 기능 (우선순위 1등) ---
 
 @app.post("/api/prepare")
-@app.post("/api/prepare/")
 async def prepare_analysis(file: UploadFile = File(...)):
     try:
         contents = await file.read()
@@ -112,10 +111,9 @@ async def prepare_analysis(file: UploadFile = File(...)):
         months = sorted(df[date_col].dt.strftime('%Y-%m').unique().tolist(), reverse=True)
         return {"franchises": franchises, "months": months, "mapping": mapping}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 @app.post("/api/analyze")
-@app.post("/api/analyze/")
 async def analyze_data(
     file: UploadFile = File(...),
     franchise: str = Form(...),
@@ -131,7 +129,7 @@ async def analyze_data(
         df[mapping['date']] = pd.to_datetime(df[mapping['date']], errors='coerce')
         mask = (df[mapping['franchise']].astype(str) == franchise) & (df[mapping['date']].dt.strftime('%Y-%m') == month)
         filtered_df = df[mask]
-        if filtered_df.empty: raise HTTPException(status_code=404, detail="데이터 없음")
+        if filtered_df.empty: return JSONResponse(status_code=404, content={"detail": "데이터 없음"})
         stats = analyzer.get_basic_stats(filtered_df, mapping['date'], mapping['rating'])
         neg_reviews = []
         for _, row in filtered_df[filtered_df[mapping['rating']] <= 3].head(10).iterrows():
@@ -146,29 +144,29 @@ async def analyze_data(
         ai_result['sentiment'] = stats['sentiment_dist']
         return {"analysis": ai_result, "stats": stats, "neg_reviews": neg_reviews, "meta": {"franchise": franchise, "month": month}}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
-# --- 프론트엔드 정적 파일 서빙: 코드 최하단 배치 ---
+# --- 프론트엔드 화면 전송 기능 (나머지 모든 경우) ---
 
 if os.path.exists("dist"):
-    # /assets 경로는 StaticFiles가 직접 관리
+    # /assets 폴더는 직접 서빙
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
     
-    # 루트 경로 요청
-    @app.get("/")
-    async def serve_index():
-        return FileResponse("dist/index.html")
-        
-    # 그 외 모든 GET 요청은 index.html로 (SPA 라우팅 대응)
+    # 그 외의 모든 요청(GET)은 index.html을 보여줌
     @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        # API 요청이 GET으로 들어온 경우 404 처리
+    async def catch_all(full_path: str):
+        # API 경로로 잘못 들어온 GET 요청은 여기서 차단
         if full_path.startswith("api"):
-            raise HTTPException(status_code=404, detail="API endpoint not found for GET")
+            return JSONResponse(status_code=404, content={"detail": "API는 POST 방식만 지원합니다."})
+        return FileResponse("dist/index.html")
+    
+    # 루트 경로 접속 시
+    @app.get("/")
+    async def root():
         return FileResponse("dist/index.html")
 
 if __name__ == "__main__":
     import uvicorn
-    # Railway의 PORT 환경변수 사용
+    # Railway에서 할당해주는 PORT 사용
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
