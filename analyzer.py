@@ -197,4 +197,10 @@ if os.path.exists("dist"):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        forwarded_allow_ips="*",  # 프록시 헤더 허용
+        proxy_headers=True  # X-Forwarded-* 헤더 처리
+    )
