@@ -103,7 +103,7 @@ class CommentAnalyzer:
         except Exception as e:
             raise Exception(f"AI 분석 실패: {str(e)}")
 
-# --- API 엔드포인트 ---
+# --- API 엔드포인트 (최우선 등록) ---
 
 @api_router.post("/prepare")
 async def prepare_analysis(file: UploadFile = File(...)):
@@ -176,10 +176,10 @@ async def analyze_data(
 # API 라우터 등록 (반드시 정적 파일보다 먼저!)
 app.include_router(api_router)
 
-# --- 정적 파일 서빙 (수동 방식) ---
+# --- 정적 파일 서빙 (가장 마지막, 가장 구체적인 경로만) ---
 
 if os.path.exists("dist"):
-    # assets 폴더의 파일들을 개별적으로 서빙
+    # /assets 폴더의 파일들만 명시적으로 서빙
     @app.get("/assets/{file_path:path}")
     async def serve_assets(file_path: str):
         """정적 파일 (CSS, JS 등) 서빙"""
@@ -188,24 +188,27 @@ if os.path.exists("dist"):
             return FileResponse(full_path)
         raise HTTPException(status_code=404, detail="File not found")
     
-    # 기타 정적 파일 (vite.svg 등)
-    @app.get("/{file_name}")
-    async def serve_static_file(file_name: str):
-        """루트 레벨 정적 파일 서빙"""
-        if file_name.startswith("api"):
-            raise HTTPException(status_code=404, detail="API endpoint not found")
-        
-        full_path = os.path.join("dist", file_name)
-        if os.path.isfile(full_path):
-            return FileResponse(full_path)
-        
-        # 파일이 없으면 index.html 반환 (SPA 라우팅)
-        return FileResponse("dist/index.html")
+    # 루트의 특정 파일들만 서빙 (vite.svg 등)
+    @app.get("/vite.svg")
+    async def serve_vite_svg():
+        """Vite 로고 파일"""
+        return FileResponse("dist/vite.svg")
     
     # 루트 경로
     @app.get("/")
     async def serve_root():
         """루트 경로 - index.html 반환"""
+        return FileResponse("dist/index.html")
+    
+    # 나머지 모든 경로는 index.html로 (SPA 라우팅, 가장 마지막에 등록)
+    @app.get("/{full_path:path}")
+    async def serve_spa_catchall(full_path: str):
+        """SPA 라우팅을 위한 catch-all (API 제외)"""
+        # /api로 시작하는 경로가 여기까지 왔다면 API가 존재하지 않는 것
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        
+        # 그 외 모든 경로는 index.html 반환 (SPA 라우팅)
         return FileResponse("dist/index.html")
 
 if __name__ == "__main__":
