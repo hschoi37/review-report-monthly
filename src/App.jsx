@@ -248,7 +248,7 @@ const App = () => {
     formData.append('file', uploadedFile);
 
     try {
-      const res = await axios.post(`${API_BASE}/api/prepare`, formData);
+      const res = await axios.post(`${API_BASE}/api/prepare/`, formData);
       setPrepData(res.data);
       setSelectedFranchise(res.data.franchises[0]);
       setSelectedMonth(res.data.months[0]);
@@ -270,7 +270,7 @@ const App = () => {
     formData.append('model', selectedModel);
 
     try {
-      const res = await axios.post(`${API_BASE}/api/analyze`, formData);
+      const res = await axios.post(`${API_BASE}/api/analyze/`, formData);
       setResult(res.data);
       setEditableResult(JSON.parse(JSON.stringify(res.data)));
     } catch (err) {

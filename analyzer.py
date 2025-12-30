@@ -95,9 +95,10 @@ class CommentAnalyzer:
         except Exception as e:
             raise Exception(f"AI 분석 실패: {str(e)}")
 
-# --- [중요] API 엔드포인트: 정적 파일 서빙보다 무조건 위에 있어야 함 ---
+# --- [중요] API 엔드포인트: 슬래시 유무에 상관없이 POST 허용 ---
 
 @app.post("/api/prepare")
+@app.post("/api/prepare/")
 async def prepare_analysis(file: UploadFile = File(...)):
     try:
         contents = await file.read()
@@ -114,6 +115,7 @@ async def prepare_analysis(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/analyze")
+@app.post("/api/analyze/")
 async def analyze_data(
     file: UploadFile = File(...),
     franchise: str = Form(...),
